@@ -134,10 +134,10 @@ function TerminalFont(const FontNum: integer = 0): TTerminalModifier; inline;
 // Escape sequence construction
 function ConstructEscapeSequence(Modifiers: TModifiers): string; inline;
 function ModifyString(Modifiers: TModifiers; const AString: string): string; inline;
-function ColorText(const AString: string; const Foreground: TTerminalColor): string;
+function ColorText(const AString: string; const Foreground: TTextColor): string;
   overload; inline;
-function ColorText(const AString: string; const Foreground: TTerminalColor;
-  const Background: TTerminalColor): string; overload; inline;
+function ColorText(const AString: string; const Foreground: TTextColor;
+  const Background: TTextColor): string; overload; inline;
 
 const
   RESET_SEQUENCE = #27'[0m';
@@ -496,16 +496,16 @@ begin
   Result := ConstructEscapeSequence(Modifiers) + AString + RESET_SEQUENCE;
 end;
 
-function ColorText(const AString: string; const Foreground: TTerminalColor): string;
+function ColorText(const AString: string; const Foreground: TTextColor): string;
 begin
-  Result := ModifyString([ForegroundColor(Foreground)], AString);
+  Result := ModifyString([TTerminalModifier.ForegroundModifier(Foreground)], AString);
 end;
 
-function ColorText(const AString: string; const Foreground: TTerminalColor;
-  const Background: TTerminalColor): string;
+function ColorText(const AString: string; const Foreground: TTextColor;
+  const Background: TTextColor): string;
 begin
-  Result := ModifyString([ForegroundColor(Foreground),
-    BackgroundColor(Background)], AString);
+  Result := ModifyString([TTerminalModifier.ForegroundModifier(Foreground),
+    TTerminalModifier.BackgroundModifier(Background)], AString);
 end;
 
 end.
