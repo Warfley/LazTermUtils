@@ -5,10 +5,7 @@ unit Terminal;
 interface
 
 uses
-  Classes, SysUtils, TerminalModifier, TerminalStreams
-  {$IfDef UNIX}
-  , BaseUnix
-  {$EndIf};
+  Classes, SysUtils, TerminalModifier, TerminalStreams, Compatibility;
 
 type
   { TTerminal }
@@ -22,8 +19,10 @@ type
 
   public
     function GetWindowSize: TTerminalSize; inline;
-    procedure Clear; inline;
-    procedure MoveCursor; inline;
+    procedure Clear(ClearMode: TClearMode = cmTotalScreen); inline;
+    procedure ClearLine(ClearMode: TLineClearMode = lcmTotalLine); inline;
+    procedure CursorMove(X: Integer; Y: Integer); inline;
+    procedure CursorGoto(X: Integer; Y: Integer); inline;
     function IsATTY: Boolean; inline;
 
     constructor Create;
@@ -46,27 +45,58 @@ implementation
 
 function TTerminal.GetWindowSize: TTerminalSize;
 begin
-  Result := Output.WindowSize;
+  if Output.IsATTY then
+    Result := Output.WindowSize
+  else
+    Result := Error.WindowSize;
 end;
 
-procedure TTerminal.Clear;
+procedure TTerminal.Clear(ClearMode: TClearMode);
 begin
-
+  if Output.IsATTY then
+  begin
+    Output.Clear(ClearMode);
+    Output.FlushControls;
+  end
+  else
+  begin
+    Error.Clear(ClearMode);
+    Error.FlushControls;
+  end;
 end;
 
-procedure TTerminal.MoveCursor;
+procedure TTerminal.ClearLine(ClearMode: TLineClearMode);
 begin
+  if Output.IsATTY then
+    Output.ClearLine(ClearMode)
+  else
+    Error.ClearLine(ClearMode);
+end;
 
+procedure TTerminal.CursorMove(X: Integer; Y: Integer);
+begin
+  if Output.IsATTY then
+    Output.CursorMove(X, Y)
+  else
+    Error.CursorMove(X, Y);
+end;
+
+procedure TTerminal.CursorGoto(X: Integer; Y: Integer);
+begin
+  if Output.IsATTY then
+    Output.CursorMove(X, Y)
+  else
+    Error.CursorMove(X, Y);
 end;
 
 function TTerminal.IsATTY: Boolean;
 begin
-  Result := Output.IsATTY;
+  Result := Output.IsATTY Or Error.IsATTY;
 end;
 
 constructor TTerminal.Create;
 begin
-  Self.Create(StdInputHandle, StdOutputHandle, StdErrorHandle);
+  Self.Create(StandardIn, StandardOut, StandardErr);
 end;
 
 constructor TTerminal.Create(const TTYFile: String);
@@ -86,9 +116,9 @@ var
   outHandle: THandle;
   errHandle: THandle;
 begin
-  inpHandle := FpOpen(InpFile, O_RDONLY);
-  outHandle := FpOpen(OutFile, O_WRONLY);
-  errHandle := FpOpen(ErrorFile, O_WRONLY);
+  inpHandle := OpenTerminalFile(InpFile, False);
+  outHandle := OpenTerminalFile(OutFile, True);
+  errHandle := OpenTerminalFile(ErrorFile, True);
   Self.Create(inpHandle, outHandle, errHandle);     
   FOwnsHandles:=True;
 end;
@@ -104,9 +134,6 @@ end;
 
 destructor TTerminal.Destroy;
 begin
-  // Reset all changes to the terminal
-  FErrorStream.Write(RESET_SEQUENCE);  
-  FOutputStream.Write(RESET_SEQUENCE);
   if FOwnsHandles then
   begin
     FInputStream.Close;

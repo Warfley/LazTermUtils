@@ -5,12 +5,7 @@ unit TerminalStreams;
 interface
 
 uses
-  Classes, SysUtils, TerminalModifier,
-  {$IfDef UNIX}
-  baseunix, termio
-  {$Else}
-  windows
-  {$EndIf};
+  Classes, SysUtils, TerminalModifier, Compatibility;
 
 type           
   TTerminalSize = record
@@ -18,13 +13,38 @@ type
     Columns: Integer;
   end;
 
+  TClearMode = (cmFromCursor=0, cmToCursor=1, cmTotalScreen=2, cmResetScreen=3);
+  TLineClearMode = (lcmFromCursor=0, lcmToCursor=1, lcmTotalLine=2);
 
   { TTerminalOutputStream }
 
   TTerminalOutputStream = class(THandleStream)
   private
+    FControlBuffer: String;
     FModifiers: TModifiers;
+    FOrigState: Cardinal;
+    FClosed: Boolean;
+
+    procedure ResetTerminal; inline;
+    procedure WriteNonModified(const AString: String); inline;
   public
+    function WindowSize: TTerminalSize; inline;
+    function IsATTY: Boolean; inline;
+
+    function isOpen: Boolean; inline;
+    procedure Close; inline;
+
+    procedure ModifyOutput(const AModifier: TTerminalModifier); inline;
+    procedure ResetModifiers; inline;
+
+    procedure Clear(ClearMode: TClearMode = cmTotalScreen); inline;
+    procedure ClearLine(ClearMode: TLineClearMode = lcmTotalLine); inline;
+    procedure CursorStartOfLine; inline;
+    procedure CursorMove(X: Integer; Y: Integer); inline;
+    procedure CursorGoto(X: Integer; Y: Integer); inline;
+
+    procedure FlushControls; inline;
+
     function Read(var Buffer; Count: Longint): Longint; override;
     function Write(const Buffer; Count: Longint): Longint; override;
     procedure Write(const AString: String); inline;
@@ -34,44 +54,76 @@ type
     procedure WriteColored(const AString: String; Foreground: TTextColor); inline; overload;
     procedure WriteColored(const AString: String; Foreground: TTextColor; Background: TTextColor); inline; overload;
 
-    procedure Close; inline;
-
-    procedure ModifyOutput(const AModifier: TTerminalModifier); inline;
-    procedure ResetModifiers; inline;
-
-    function WindowSize: TTerminalSize;
-    function IsATTY: Boolean; inline;
-
     constructor Create(AHandle: THandle);
+    destructor Destroy; override;
   end;
 
   { TTerminalInputStream }
 
-  TTerminalInputStream = class(THandleStream)
+  TTerminalInputStream = class(THandleStream)   
+  private
+    FOrigState: Cardinal;
+    FClosed: Boolean;
+
+    procedure ResetTerminal; inline;
   public
+    function IsATTY: Boolean; inline;
+
+    procedure Close; inline;
+    function isOpen: Boolean; inline;
+
     function Write(const Buffer; Count: Longint): Longint; override;
+    function Read(var Buffer; Count: Longint): Longint; override;
     function ReadToEnd: String;
-    function ReadLn: String; inline;
+    function ReadLn(const LineEnding: String = system.LineEnding): String; inline;
     function ReadTo(const APattern: String; MaxLength: SizeInt; out
       PatternFound: Boolean): String;
     function ReadTo(const APattern: String; MaxLength: SizeInt): String; inline;
     function ReadTo(const APattern: String): String; inline;
 
-    procedure Close; inline;
-
-    constructor Create(AHandle: THandle);   
-    function IsATTY: Boolean; inline;
+    constructor Create(AHandle: THandle);
+    destructor Destroy; override;
   end;
 
 implementation
 
-
 { TTerminalInputStream }
+
+function TTerminalInputStream.IsATTY: Boolean;
+begin
+  Result := Compatibility.isATTY(Handle);
+end;
+
+function TTerminalInputStream.isOpen: Boolean;
+begin
+  Result := not FClosed;
+end;
+
+procedure TTerminalInputStream.ResetTerminal;
+begin
+  if IsATTY then
+    ResetConsole(Handle, FOrigState);
+end;
+
+procedure TTerminalInputStream.Close;
+begin
+  if FClosed then Exit;
+  ResetTerminal;
+  FileClose(Handle);
+  FClosed := True;
+end;
 
 function TTerminalInputStream.Write(const Buffer; Count: Longint): Longint;
 begin
   raise EWriteError.Create('Can''t write to input');
   Result := -1;
+end;
+
+function TTerminalInputStream.Read(var Buffer; Count: Longint): Longint;
+begin
+  if not isOpen then
+    raise EReadError.Create('File already closed');
+  Result:=inherited Read(Buffer, Count);
 end;
 
 function TTerminalInputStream.ReadToEnd: String;
@@ -175,12 +227,7 @@ begin
   Result := ReadTo(APattern, SizeInt.MaxValue);
 end;
 
-procedure TTerminalInputStream.Close;
-begin
-  FileClose(Handle);
-end;
-
-function TTerminalInputStream.ReadLn: String;
+function TTerminalInputStream.ReadLn(const LineEnding: String): String;
 begin
   Result := ReadTo(LineEnding);
   Result := Result.Substring(0, Result.Length - Length(LineEnding));
@@ -189,14 +236,120 @@ end;
 constructor TTerminalInputStream.Create(AHandle: THandle);
 begin
   inherited Create(AHandle);
+  FClosed := False;
+  if IsATTY then
+    FOrigState := InitInputConsole(Handle);
 end;
 
-function TTerminalInputStream.IsATTY: Boolean;
+destructor TTerminalInputStream.Destroy;
 begin
-  Result := termio.IsATTY(Handle) <> 0;
+  if isOpen then ResetTerminal;
+  inherited Destroy;
 end;
 
-{ TTerminalOutputStream }
+{ TTerminalOutputStream }   
+
+function TTerminalOutputStream.WindowSize: TTerminalSize;
+begin
+  if not IsATTY then
+  begin
+    Result.Rows := -1;
+    Result.Columns := -1;
+  end
+  else
+  begin
+    Compatibility.GetWindowSize(Handle, Result.Rows, Result.Columns);
+  end;
+end;
+
+function TTerminalOutputStream.isOpen: Boolean;
+begin
+  Result := not FClosed;
+end;
+
+procedure TTerminalOutputStream.ResetTerminal;
+const
+  ConsoleClosed: Boolean = False;
+begin
+  // on windows there is only one possible console, so resetting twice
+  // will result in the reset sequence being printed
+  if IsATTY  {$IfDef WINDOWS}and not ConsoleClosed{$EndIf} then
+  begin
+    {$IfDef WINDOWS}
+    ConsoleClosed := True;
+    {$EndIf}
+    Write(RESET_SEQUENCE);
+    ResetConsole(Handle, FOrigState);
+  end;
+end;
+
+procedure TTerminalOutputStream.WriteNonModified(const AString: String);
+var
+  tmp: TModifiers;
+begin
+  tmp := FModifiers;
+  try
+    Write(AString);
+  finally
+    FModifiers := tmp;
+  end;
+end;
+
+procedure TTerminalOutputStream.Close;
+begin
+  if not isOpen then Exit;
+  ResetTerminal;
+  FileClose(Handle);
+  FClosed := False;
+end;
+
+procedure TTerminalOutputStream.ModifyOutput(const AModifier: TTerminalModifier
+  );
+begin
+  Insert(AModifier, FModifiers, Length(FModifiers));
+end;
+
+procedure TTerminalOutputStream.ResetModifiers;
+begin
+  FModifiers := [TerminalModifier.ResetModifiers];
+end;
+
+procedure TTerminalOutputStream.Clear(ClearMode: TClearMode);
+begin
+  FControlBuffer += RESET_SEQUENCE + #27'[' + ord(ClearMode).ToString + 'J';
+end;
+
+procedure TTerminalOutputStream.ClearLine(ClearMode: TLineClearMode);
+begin
+  FControlBuffer += #27'[' + ord(ClearMode).ToString + 'K';
+end;
+
+procedure TTerminalOutputStream.CursorStartOfLine;
+begin
+  FControlBuffer += #13;
+end;
+
+procedure TTerminalOutputStream.CursorMove(X: Integer; Y: Integer);
+begin
+  if X > 0 then
+    FControlBuffer += #27'[' + X.ToString + 'C'
+  else if X < 0 then
+    FControlBuffer += #27'[' + (-X).ToString + 'D';
+  if Y > 0 then
+    FControlBuffer += #27'[' + Y.ToString + 'B'
+  else if Y < 0 then
+    FControlBuffer += #27'[' + (-Y).ToString + 'A';
+end;
+
+procedure TTerminalOutputStream.CursorGoto(X: Integer; Y: Integer);
+begin
+  FControlBuffer += #27'[' + X.ToString + ';' + Y.ToString + 'H';
+end;
+
+procedure TTerminalOutputStream.FlushControls;
+begin
+  WriteNonModified('');
+end;
 
 function TTerminalOutputStream.Read(var Buffer; Count: Longint): Longint;
 begin
@@ -207,6 +360,14 @@ end;
 function TTerminalOutputStream.Write(const Buffer; Count: Longint): Longint;
 var modStr: String;
 begin
+  if not isOpen then
+    raise EWriteError.Create('File already closed');
+  if FControlBuffer.Length > 0 then
+  begin
+    modStr := FControlBuffer;
+    FControlBuffer := '';
+    WriteNonModified(modStr);
+  end;
   if Length(FModifiers) > 0 then
   begin
     modStr:=ConstructEscapeSequence(FModifiers);
@@ -250,47 +411,23 @@ begin
   Write(ColorText(AString, Foreground, Background));
 end;
 
-procedure TTerminalOutputStream.Close;
-begin
-  FileClose(Handle);
-end;
-
-procedure TTerminalOutputStream.ModifyOutput(const AModifier: TTerminalModifier
-  );
-begin
-  Insert(AModifier, FModifiers, Length(FModifiers));
-end;
-
-procedure TTerminalOutputStream.ResetModifiers;
-begin
-  FModifiers := [TerminalModifier.ResetModifiers];
-end;
-
-function TTerminalOutputStream.WindowSize: TTerminalSize;
-var
-  sz: TWinSize;
-begin
-  if not IsATTY then
-  begin
-    Result.Rows := -1;
-    Result.Columns := -1;
-  end
-  else
-  begin
-    FpIOCtl(Handle, TIOCGWINSZ, @sz);
-    Result.Rows := sz.ws_row;
-    Result.Columns := sz.ws_col;
-  end;
-end;
-
 function TTerminalOutputStream.IsATTY: Boolean;
 begin
-  Result := termio.IsATTY(Handle) <> 0;
+  Result := Compatibility.isATTY(Handle);
 end;
 
 constructor TTerminalOutputStream.Create(AHandle: THandle);
 begin
   inherited Create(AHandle);
+  FClosed := False;
+  if IsATTY then
+    FOrigState := InitOutputConsole(Handle);
+end;
+
+destructor TTerminalOutputStream.Destroy;
+begin
+  if isOpen then ResetTerminal;
+  inherited Destroy;
 end;
 
 end.

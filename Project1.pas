@@ -3,18 +3,23 @@ program Project1;
 {$mode objfpc}{$H+}
 
 uses
-  TerminalModifier, Terminal, TerminalStreams, sysutils;
+  TerminalModifier, Terminal;
 
 var
   Term: TTerminal;
   s: String;
 begin
-  Term := TTerminal.Create('/dev/pts/1');
+  Term := TTerminal.Create;
+  WriteLn(Term.Input.IsATTY);
   Term.Output.WriteColored('Foo', $ff0000);
   Term.Output.ModifyOutput(SingleUnderline);
-  Term.Output.WriteLn('Bar');
-  s := Term.Input.ReadLn;
-  Term.Output.WriteLn(s);
+  Term.Output.Write('Bar');
+  Term.CursorMove(0, -1);
+  Term.Output.FlushControls;
+  Term.ClearLine;
+  s := Term.Input.ReadLn;     
+  Term.Output.Writeln(s);
   Term.Free;
+  ReadLn;
 end.
 
