@@ -64,6 +64,7 @@ type
   private
     FOrigState: Cardinal;
     FClosed: Boolean;
+    FDirectRead: Boolean;
 
     procedure ResetTerminal; inline;
   public
@@ -83,6 +84,8 @@ type
 
     constructor Create(AHandle: THandle);
     destructor Destroy; override;
+
+    property DirectRead: Boolean read FDirectRead write FDirectRead;
   end;
 
 implementation
@@ -123,7 +126,10 @@ function TTerminalInputStream.Read(var Buffer; Count: Longint): Longint;
 begin
   if not isOpen then
     raise EReadError.Create('File already closed');
-  Result:=inherited Read(Buffer, Count);
+  if DirectRead and IsATTY then
+    Result := Compatibility.DirectRead(Handle, Buffer, Count)
+  else
+    Result:=inherited Read(Buffer, Count);
 end;
 
 function TTerminalInputStream.ReadToEnd: String;
@@ -237,6 +243,7 @@ constructor TTerminalInputStream.Create(AHandle: THandle);
 begin
   inherited Create(AHandle);
   FClosed := False;
+  FDirectRead := True;
   if IsATTY then
     FOrigState := InitInputConsole(Handle);
 end;

@@ -23,6 +23,8 @@ function InitInputConsole(Handle: THANDLE): Cardinal;
 
 procedure ResetConsole(Handle: THANDLE; OrigState: Cardinal);
 
+function DirectRead(Handle: THandle; var Buffer; Length: SizeInt): SizeInt;
+
 implementation
 
 procedure GetWindowSize(Handle: THandle; out Rows: Integer; out
@@ -131,6 +133,35 @@ begin
   SetConsoleMode(Handle, OrigState);
 {$EndIf}
 end;
+
+function DirectRead(Handle: THandle; var Buffer; Length: SizeInt): SizeInt;
+{$IfDef WINDOWS}
+begin
+end;
+{$Else}
+var
+  oTIO, nTIO: Termios;
+  i: SizeInt;
+begin
+  TCGetAttr(1, oTIO);
+  nTIO := oTIO;
+  // Raw to not echo the characters inputted
+  CFMakeRaw(nTIO);
+  // Directly read and don't line buffer
+  TCSetAttr(1, TCSANOW, nTIO);
+  try
+    Result := FpRead(Handle, Buffer, Length);
+    // A very dirty hack, the reason for this is
+    // that when reading raw the enter key will be placed instead of
+    // a newline. This breaks Readln so for convinience we convert them
+    for i:=0 to Result-1 do
+      if PChar(@Buffer)[i] = #13 then
+        PChar(@Buffer)[i] := LineEnding;
+  finally
+    TCSetAttr(1, TCSANOW, oTIO);
+  end;
+end;
+{$EndIf}
 
 end.
 
