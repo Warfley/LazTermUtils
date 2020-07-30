@@ -84,9 +84,9 @@ end;
 procedure TTerminal.CursorGoto(X: Integer; Y: Integer);
 begin
   if Output.IsATTY then
-    Output.CursorMove(X, Y)
+    Output.CursorGoto(X, Y)
   else
-    Error.CursorMove(X, Y);
+    Error.CursorGoto(X, Y);
 end;
 
 function TTerminal.IsATTY: Boolean;
