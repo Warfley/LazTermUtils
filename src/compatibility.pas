@@ -142,7 +142,7 @@ function EnableDirectRead(Handle: THandle): TDirectReadState;
 {$IfDef WINDOWS}
 begin
   GetConsoleMode(Handle, Result);
-  SetConsoleMode(Handle, Result And Not ENABLE_ECHO_INPUT);
+  SetConsoleMode(Handle, Result And Not (ENABLE_ECHO_INPUT Or ENABLE_LINE_INPUT));
 end;
 {$Else}
 var
@@ -161,7 +161,7 @@ end;
 procedure RestoreDirectRead(Handle: THandle; oldState: TDirectReadState);
 {$IfDef WINDOWS}
 begin
-  SetConsoleMode(Handle, Result And Not oldState);
+  SetConsoleMode(Handle, oldState);
 end;
 {$Else}
 begin
