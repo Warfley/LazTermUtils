@@ -80,7 +80,7 @@ type
     function Write(const Buffer; Count: Longint): Longint; override;
     function Read(var Buffer; Count: Longint): Longint; override;
     function ReadToEnd: String;
-    function ReadLn(const LineEnding: String = system.LineEnding): String; inline;
+    function ReadLn: String; inline;
     function ReadTo(const APattern: String; MaxLength: SizeInt; out
       PatternFound: Boolean): String;
     function ReadTo(const APattern: String; MaxLength: SizeInt): String; inline;
@@ -147,14 +147,6 @@ begin
   if not isOpen then
     raise EReadError.Create('File already closed');
   Result:=inherited Read(Buffer, Count);
-  {$IfDef Unix}
-  // a hack because raw read treats enter as #13 not newline
-  // this breaks readline, so we simply change it here
-  if DirectRead and IsATTY then
-    for i := 0 to Result -1 do
-      if PChar(@Buffer)[i] = #13 then
-        PChar(@Buffer)[i] := LineEnding;
-  {$EndIf}
 end;
 
 function TTerminalInputStream.ReadToEnd: String;
@@ -258,8 +250,13 @@ begin
   Result := ReadTo(APattern, SizeInt.MaxValue);
 end;
 
-function TTerminalInputStream.ReadLn(const LineEnding: String): String;
+function TTerminalInputStream.ReadLn: String;
+var
+  LineEnding: String = system.LineEnding;
 begin
+  // This is a hack because in raw mode newlines will be keycode enter
+  if DirectRead and IsATTY then
+    LineEnding:= #13;
   Result := ReadTo(LineEnding);
   Result := Result.Substring(0, Result.Length - Length(LineEnding));
 end;
