@@ -14,9 +14,8 @@ begin
   Term.Output.WriteColored('Foo', $ff0000);
   Term.Output.ModifyOutput(SingleUnderline);
   Term.Output.Write('Bar');
-  s := Term.Input.ReadLn;     
+  s := Term.Input.ReadLn;
   Term.Clear;
-  Term.CursorGoto(0,0);
   Term.Output.Writeln(s);
   Term.Free;
   ReadLn;

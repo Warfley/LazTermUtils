@@ -37,11 +37,13 @@ type
     procedure ModifyOutput(const AModifier: TTerminalModifier); inline;
     procedure ResetModifiers; inline;
 
-    procedure Clear(ClearMode: TClearMode = cmTotalScreen); inline;
-    procedure ClearLine(ClearMode: TLineClearMode = lcmTotalLine); inline;
-    procedure CursorStartOfLine; inline;
-    procedure CursorMove(X: Integer; Y: Integer); inline;
-    procedure CursorGoto(X: Integer; Y: Integer); inline;
+    procedure Clear(ClearMode: TClearMode = cmTotalScreen; Flush: Boolean = False); inline;
+    procedure ClearLine(ClearMode: TLineClearMode = lcmTotalLine; Flush: Boolean = False); inline;
+    procedure CursorStartOfLine(Flush: Boolean = False); inline;
+    procedure CursorMove(X: Integer; Y: Integer; Flush: Boolean = False); inline;
+    procedure CursorGoto(X: Integer; Y: Integer; Flush: Boolean = False); inline;
+    procedure CursorGotoX(X: Integer; Flush: Boolean = False); inline;
+    procedure CursorGotoY(Y: Integer; Flush: Boolean = False); inline;
 
     procedure FlushControls; inline;
 
@@ -65,7 +67,9 @@ type
     FOrigState: Cardinal;
     FClosed: Boolean;
     FDirectRead: Boolean;
+    FDirectReadRestore: TDirectReadState;
 
+    procedure SetDirectRead(AValue: Boolean);
     procedure ResetTerminal; inline;
   public
     function IsATTY: Boolean; inline;
@@ -85,7 +89,7 @@ type
     constructor Create(AHandle: THandle);
     destructor Destroy; override;
 
-    property DirectRead: Boolean read FDirectRead write FDirectRead;
+    property DirectRead: Boolean read FDirectRead write SetDirectRead;
   end;
 
 implementation
@@ -102,10 +106,24 @@ begin
   Result := not FClosed;
 end;
 
+procedure TTerminalInputStream.SetDirectRead(AValue: Boolean);
+begin
+  if FDirectRead=AValue then Exit;
+  FDirectRead:=AValue;
+  if not IsATTY then Exit;
+  if FDirectRead then
+    FDirectReadRestore := EnableDirectRead(Handle)
+  else
+    RestoreDirectRead(Handle, FDirectReadRestore);
+end;
+
 procedure TTerminalInputStream.ResetTerminal;
 begin
   if IsATTY then
+  begin
+    SetDirectRead(False);
     ResetConsole(Handle, FOrigState);
+  end;
 end;
 
 procedure TTerminalInputStream.Close;
@@ -123,13 +141,20 @@ begin
 end;
 
 function TTerminalInputStream.Read(var Buffer; Count: Longint): Longint;
+var
+  i: Integer;
 begin
   if not isOpen then
     raise EReadError.Create('File already closed');
+  Result:=inherited Read(Buffer, Count);
+  {$IfDef Unix}
+  // a hack because raw read treats enter as #13 not newline
+  // this breaks readline, so we simply change it here
   if DirectRead and IsATTY then
-    Result := Compatibility.DirectRead(Handle, Buffer, Count)
-  else
-    Result:=inherited Read(Buffer, Count);
+    for i := 0 to Result -1 do
+      if PChar(@Buffer)[i] = #13 then
+        PChar(@Buffer)[i] := LineEnding;
+  {$EndIf}
 end;
 
 function TTerminalInputStream.ReadToEnd: String;
@@ -243,7 +268,7 @@ constructor TTerminalInputStream.Create(AHandle: THandle);
 begin
   inherited Create(AHandle);
   FClosed := False;
-  FDirectRead := True;
+  FDirectRead := False;
   if IsATTY then
     FOrigState := InitInputConsole(Handle);
 end;
@@ -321,22 +346,27 @@ begin
   FModifiers := [TerminalModifier.ResetModifiers];
 end;
 
-procedure TTerminalOutputStream.Clear(ClearMode: TClearMode);
+procedure TTerminalOutputStream.Clear(ClearMode: TClearMode; Flush: Boolean);
 begin
   FControlBuffer += RESET_SEQUENCE + #27'[' + ord(ClearMode).ToString + 'J';
+  if Flush then FlushControls;
 end;
 
-procedure TTerminalOutputStream.ClearLine(ClearMode: TLineClearMode);
+procedure TTerminalOutputStream.ClearLine(ClearMode: TLineClearMode;
+  Flush: Boolean);
 begin
   FControlBuffer += #27'[' + ord(ClearMode).ToString + 'K';
+  if Flush then FlushControls;
 end;
 
-procedure TTerminalOutputStream.CursorStartOfLine;
+procedure TTerminalOutputStream.CursorStartOfLine(Flush: Boolean);
 begin
   FControlBuffer += #13;
+  if Flush then FlushControls;
 end;
 
-procedure TTerminalOutputStream.CursorMove(X: Integer; Y: Integer);
+procedure TTerminalOutputStream.CursorMove(X: Integer; Y: Integer;
+  Flush: Boolean);
 begin
   if X > 0 then
     FControlBuffer += #27'[' + X.ToString + 'C'
@@ -346,11 +376,32 @@ begin
     FControlBuffer += #27'[' + Y.ToString + 'B'
   else if Y < 0 then
     FControlBuffer += #27'[' + (-Y).ToString + 'A';
+  if Flush then FlushControls;
 end;
 
-procedure TTerminalOutputStream.CursorGoto(X: Integer; Y: Integer);
+procedure TTerminalOutputStream.CursorGoto(X: Integer; Y: Integer;
+  Flush: Boolean);
 begin
   FControlBuffer += #27'[' + X.ToString + ';' + Y.ToString + 'H';
+  if Flush then FlushControls;
+end;
+
+procedure TTerminalOutputStream.CursorGotoX(X: Integer; Flush: Boolean);
+begin
+  // It will stop at the border
+  // So we first move left by an insane amount
+  CursorMove(-9999, 0);
+  // to then move right the right amount
+  CursorMove(X, 0, Flush);
+end;
+
+procedure TTerminalOutputStream.CursorGotoY(Y: Integer; Flush: Boolean);
+begin
+  // It will stop at the border
+  // So we first move up by an insane amount
+  CursorMove(0, -9999);
+  // to then move down the right amount
+  CursorMove(0, Y, Flush);
 end;
 
 procedure TTerminalOutputStream.FlushControls;

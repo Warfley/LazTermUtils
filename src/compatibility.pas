@@ -10,6 +10,9 @@ uses
   {$Else}Windows
   {$Endif};
 
+type
+  TDirectReadState = {$IfDef UNIX}Termios{$Else}Cardinal{$EndIf};
+
 procedure GetWindowSize(Handle: THandle; out Rows: Integer; out Columns: Integer);
 function isATTY(Handle: THandle): Boolean; inline;
 function OpenTerminalFile(const FileName: String; OpenWrite: Boolean): THandle;
@@ -23,7 +26,8 @@ function InitInputConsole(Handle: THANDLE): Cardinal;
 
 procedure ResetConsole(Handle: THANDLE; OrigState: Cardinal);
 
-function DirectRead(Handle: THandle; var Buffer; Length: SizeInt): SizeInt;
+function EnableDirectRead(Handle: THandle): TDirectReadState;
+procedure RestoreDirectRead(Handle: THandle; oldState: TDirectReadState);
 
 implementation
 
@@ -134,32 +138,34 @@ begin
 {$EndIf}
 end;
 
-function DirectRead(Handle: THandle; var Buffer; Length: SizeInt): SizeInt;
+function EnableDirectRead(Handle: THandle): TDirectReadState;
 {$IfDef WINDOWS}
 begin
+  GetConsoleMode(Handle, Result);
+  SetConsoleMode(Handle, Result And Not ENABLE_ECHO_INPUT);
 end;
 {$Else}
 var
-  oTIO, nTIO: Termios;
+  nTIO: Termios;
   i: SizeInt;
 begin
-  TCGetAttr(1, oTIO);
-  nTIO := oTIO;
+  TCGetAttr(Handle, Result);
+  nTIO := Result;
   // Raw to not echo the characters inputted
   CFMakeRaw(nTIO);
   // Directly read and don't line buffer
-  TCSetAttr(1, TCSANOW, nTIO);
-  try
-    Result := FpRead(Handle, Buffer, Length);
-    // A very dirty hack, the reason for this is
-    // that when reading raw the enter key will be placed instead of
-    // a newline. This breaks Readln so for convinience we convert them
-    for i:=0 to Result-1 do
-      if PChar(@Buffer)[i] = #13 then
-        PChar(@Buffer)[i] := LineEnding;
-  finally
-    TCSetAttr(1, TCSANOW, oTIO);
-  end;
+  TCSetAttr(Handle, TCSANOW, nTIO);
+end;
+{$EndIf}
+
+procedure RestoreDirectRead(Handle: THandle; oldState: TDirectReadState);
+{$IfDef WINDOWS}
+begin
+  SetConsoleMode(Handle, Result And Not oldState);
+end;
+{$Else}
+begin
+  TCSetAttr(Handle, TCSANOW, oldState);
 end;
 {$EndIf}
 

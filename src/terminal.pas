@@ -19,10 +19,12 @@ type
 
   public
     function GetWindowSize: TTerminalSize; inline;
-    procedure Clear(ClearMode: TClearMode = cmTotalScreen); inline;
-    procedure ClearLine(ClearMode: TLineClearMode = lcmTotalLine); inline;
-    procedure CursorMove(X: Integer; Y: Integer); inline;
-    procedure CursorGoto(X: Integer; Y: Integer); inline;
+    procedure Clear(ClearMode: TClearMode = cmTotalScreen; Flush: Boolean = True); inline;
+    procedure ClearLine(ClearMode: TLineClearMode = lcmTotalLine; Flush: Boolean = False); inline;
+    procedure CursorMove(X: Integer; Y: Integer; Flush: Boolean = False); inline;
+    procedure CursorGoto(X: Integer; Y: Integer; Flush: Boolean = False); inline;
+    procedure CursorGotoX(X: Integer; Flush: Boolean = False); inline;
+    procedure CursorGotoY(Y: Integer; Flush: Boolean = False); inline;
     function IsATTY: Boolean; inline;
 
     constructor Create;
@@ -51,42 +53,56 @@ begin
     Result := Error.WindowSize;
 end;
 
-procedure TTerminal.Clear(ClearMode: TClearMode);
+procedure TTerminal.Clear(ClearMode: TClearMode; Flush: Boolean);
 begin
   if Output.IsATTY then
   begin
-    Output.Clear(ClearMode);
-    Output.FlushControls;
+    Output.Clear(ClearMode, Flush);
   end
   else
   begin
-    Error.Clear(ClearMode);
-    Error.FlushControls;
+    Error.Clear(ClearMode, Flush);
   end;
 end;
 
-procedure TTerminal.ClearLine(ClearMode: TLineClearMode);
+procedure TTerminal.ClearLine(ClearMode: TLineClearMode; Flush: Boolean);
 begin
   if Output.IsATTY then
-    Output.ClearLine(ClearMode)
+    Output.ClearLine(ClearMode, Flush)
   else
-    Error.ClearLine(ClearMode);
+    Error.ClearLine(ClearMode, Flush);
 end;
 
-procedure TTerminal.CursorMove(X: Integer; Y: Integer);
+procedure TTerminal.CursorMove(X: Integer; Y: Integer; Flush: Boolean);
 begin
   if Output.IsATTY then
-    Output.CursorMove(X, Y)
+    Output.CursorMove(X, Y, Flush)
   else
-    Error.CursorMove(X, Y);
+    Error.CursorMove(X, Y, Flush);
 end;
 
-procedure TTerminal.CursorGoto(X: Integer; Y: Integer);
+procedure TTerminal.CursorGoto(X: Integer; Y: Integer; Flush: Boolean);
 begin
   if Output.IsATTY then
-    Output.CursorGoto(X, Y)
+    Output.CursorGoto(X, Y, Flush)
   else
-    Error.CursorGoto(X, Y);
+    Error.CursorGoto(X, Y, Flush);
+end;
+
+procedure TTerminal.CursorGotoX(X: Integer; Flush: Boolean);
+begin
+  if Output.IsATTY then
+    Output.CursorGotoX(X, Flush)
+  else
+    Error.CursorGotoX(X, Flush);
+end;
+
+procedure TTerminal.CursorGotoY(Y: Integer; Flush: Boolean);
+begin
+  if Output.IsATTY then
+    Output.CursorGotoY(Y, Flush)
+  else
+    Error.CursorGotoY(Y, Flush);
 end;
 
 function TTerminal.IsATTY: Boolean;
