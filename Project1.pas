@@ -8,13 +8,23 @@ uses
 var
   Term: TTerminal;
   k: TTerminalKey;
+  m: TKeyModifier;
 begin
   Term := TTerminal.Create;
   Term.Output.WriteColored('Foo', $ff0000);
   Term.Output.WriteLn;
   Term.Input.DirectRead:=True;
-  k := Term.Input.ReadKey;
-  Writeln(k.SpecialKeyCode);
+  while True do
+  begin
+    k := Term.Input.ReadKey;
+    if k.SpecialKey then
+      WriteLn(k.SpecialKeyCode)
+    else
+      WriteLn(k.CharValue);
+    for m in k.Modifiers do
+      Write(m, ' ');
+    WriteLn;
+  end;
   Term.Free;
   ReadLn;
 end.

@@ -44,7 +44,9 @@ begin
   manager.AddAutomaton(TSingleLetterSequenceAutomaton.Create(#27,
     [#0..#31, '0'..'9', 'a'..'z']));
   // F-Keys, modified F-Keys, delete, insert and co
-  manager.AddAutomaton(TEnclosedSequenceAutomaton.Create(csi, '~'));
+  manager.AddAutomaton(TEnclosedSequenceAutomaton.Create(csi, ['~']));
+  // Modified f keys because fuck you
+  manager.AddAutomaton(TEnclosedSequenceAutomaton.Create(csi, ['P'..'S']));
   // TODO: Alt+GR automatons
 end;
 
@@ -122,12 +124,10 @@ begin
   end;
 end;
 
-function ModifierForCSI(c: char): TKeyModifiers; inline;
-var
-  m: byte;
+function ModifierForCSI(m: Byte): TKeyModifiers; inline;
 begin
   Result := [];
-  m := Ord(c) - Ord(#1);
+  m := m - 1;
   if m and Ord(kmShift) = Ord(kmShift) then
     Result += [kmShift];
   if m and Ord(kmAlt) = Ord(kmAlt) then
@@ -154,14 +154,6 @@ begin
         Result := SpecialKey(skPageUp);
       '6':
         Result := SpecialKey(skPageDown);
-      'P':
-        Result := SpecialKey(skF1);
-      'Q':
-        Result := SpecialKey(skF2);
-      'R':
-        Result := SpecialKey(skF3);
-      'S':
-        Result := SpecialKey(skF4);
       else
         raise EUnknownControlSequenceException.Create('Unsupported sequence. ' +
           'please report this as a bug [CSI]' + seq + '~');
@@ -196,7 +188,28 @@ begin
       'please report this as a bug [CSI]' + seq + '~');
 
   if Length(split) > 1 then
-    Result.Modifiers := ModifierForCSI(split[1][1]);
+    Result.Modifiers := ModifierForCSI(split[1].ToInteger);
+end;
+
+function CSIFKeyToKey(const seq: string): TTerminalKey;
+var
+  split: TStringArray;
+begin
+  split := seq.Split([';']);
+  case seq[seq.Length] of
+  'P':
+    Result := SpecialKey(skF1);
+  'Q':
+    Result := SpecialKey(skF2);
+  'R':
+    Result := SpecialKey(skF3);
+  'S':
+    Result := SpecialKey(skF4);
+  end;
+  Result.Modifiers := ModifierForCSI(split[1].Substring(0, split[1].Length - 1).ToInteger);
+  if Length(split) < 1 then
+    raise EUnknownControlSequenceException.Create(
+      'This should have never been parsed. Please report this as a bug: [CSI]' + seq);
 end;
 
 function CSIToKey(Seq: string): TTerminalKey; inline;
@@ -205,6 +218,8 @@ begin
     Result := CSICharToKey(Seq[1])
   else if Seq.EndsWith('~') then
     Result := CSISequenceToKey(seq.Substring(0, Seq.Length - 1))
+  else if (Seq.Length > 1) and (Seq[Seq.Length] in ['P'..'S']) then
+    Result := CSIFKeyToKey(Seq)
   else
     raise EUnknownControlSequenceException.Create(
       'This should have never been parsed. Please report this as a bug: [CSI]' + seq);
@@ -233,8 +248,6 @@ begin
     Exit(CharToKey(Sequence[1]));
   if (Sequence.Length = 2) and (Sequence[1] = #27) then
     Exit(AltModified(Sequence[2]));
-  if Sequence.StartsWith(csi) then
-    Exit(CSIToKey(Sequence.Substring(csi.Length)));
   if Sequence.StartsWith(csi) then
     Exit(CSIToKey(Sequence.Substring(csi.Length)));
   if Sequence.StartsWith(ss3) then

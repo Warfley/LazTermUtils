@@ -57,13 +57,13 @@ type
   private
     FSink: boolean;
     FStartSequence: string;
-    FEndChar: char;
+    FEndChars: TCharSet;
   protected
     procedure DoReset; override;
     procedure DoStep(c: char); override;
     function isSink: boolean; override;
   public
-    constructor Create(const AStart: string; AEnd: char);
+    constructor Create(const AStart: string; AEnd: TCharSet);
   end;
 
   { TAutomatonManager }
@@ -149,6 +149,7 @@ procedure TAutomaton.Reset;
 begin
   FCount := 0;
   FFinal := -1;
+  DoReset;
 end;
 
 constructor TAutomaton.Create;
@@ -206,7 +207,7 @@ begin
     if c <> FStartSequence[Count] then
       FSink := True;
   end
-  else if c = FEndChar then
+  else if c in FEndChars then
     MakeFinal;
 end;
 
@@ -215,10 +216,10 @@ begin
   Result := FSink;
 end;
 
-constructor TEnclosedSequenceAutomaton.Create(const AStart: string; AEnd: char);
+constructor TEnclosedSequenceAutomaton.Create(const AStart: string; AEnd: TCharSet);
 begin
   FStartSequence := AStart;
-  FEndChar := AEnd;
+  FEndChars := AEnd;
 end;
 
 end.
