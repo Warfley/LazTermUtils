@@ -5,7 +5,7 @@ unit TerminalStreams;
 interface
 
 uses
-  Classes, SysUtils, TerminalModifier, Compatibility;
+  Classes, SysUtils, TerminalModifier, Compatibility, Math, Automaton, TerminalKeys;
 
 type           
   TTerminalSize = record
@@ -27,6 +27,7 @@ type
 
     procedure ResetTerminal; inline;
     procedure WriteNonModified(const AString: String); inline;
+    procedure WriteRaw(const AString: String); inline;
   public
     function WindowSize: TTerminalSize; inline;
     function IsATTY: Boolean; inline;
@@ -44,6 +45,7 @@ type
     procedure CursorGoto(X: Integer; Y: Integer; Flush: Boolean = False); inline;
     procedure CursorGotoX(X: Integer; Flush: Boolean = False); inline;
     procedure CursorGotoY(Y: Integer; Flush: Boolean = False); inline;
+    procedure Bell; inline;
 
     procedure FlushControls; inline;
 
@@ -68,10 +70,13 @@ type
     FClosed: Boolean;
     FDirectRead: Boolean;
     FDirectReadRestore: TDirectReadState;
+    FBuffer: String;
+    FSequenceAutomaton: TAutomatonManager;
 
-    procedure SetDirectRead(AValue: Boolean);
+    procedure SetDirectRead(AValue: Boolean); inline;
     procedure ResetTerminal; inline;
-  public
+  public            
+    function ReadSequence: String;
     function IsATTY: Boolean; inline;
 
     procedure Close; inline;
@@ -79,12 +84,16 @@ type
 
     function Write(const Buffer; Count: Longint): Longint; override;
     function Read(var Buffer; Count: Longint): Longint; override;
+    function Read(Count: SizeInt): String; inline;       
+    function ReadChar: Char; inline;
+    function ReadCharNonBlocking(out c: Char): Boolean; inline;
     function ReadToEnd: String;
     function ReadLn: String; inline;
     function ReadTo(const APattern: String; MaxLength: SizeInt; out
       PatternFound: Boolean): String;
     function ReadTo(const APattern: String; MaxLength: SizeInt): String; inline;
     function ReadTo(const APattern: String): String; inline;
+    function ReadKey: TTerminalKey; inline;
 
     constructor Create(AHandle: THandle);
     destructor Destroy; override;
@@ -146,7 +155,67 @@ var
 begin
   if not isOpen then
     raise EReadError.Create('File already closed');
-  Result:=inherited Read(Buffer, Count);
+  Result := 0;
+  if FBuffer.Length > 0 then
+  begin
+    Result := Math.Min(Count, FBuffer.Length);
+    Move(FBuffer[1], Buffer, Result);
+    Delete(FBuffer, 1, Result);
+  end;
+  if Result < Count then
+    Result += inherited Read(Buffer, Count - Result);
+end;
+
+function TTerminalInputStream.Read(Count: SizeInt): String;
+begin
+  ReadBuffer(Result, Count);
+end;
+
+function TTerminalInputStream.ReadChar: Char;
+begin
+  Result := Char(ReadByte);
+end;
+
+function TTerminalInputStream.ReadCharNonBlocking(out c: Char): Boolean;
+begin
+  Result := CharAvailable(Handle);
+  if Result then
+    c := ReadChar;
+end;
+
+function TTerminalInputStream.ReadSequence: String;
+var
+  i: Integer;
+  c: Char;
+  aut: TAutomaton;
+  sequenceLength: Integer;
+begin
+  SetLength(Result, 10);
+  FSequenceAutomaton.Reset;
+  // First read blocking
+  Result[1] := ReadChar;
+  FSequenceAutomaton.Step(Result[1]);
+  // Assumption 1: Escape sequences are never longer than 10 chars
+  for i:=2 to 10 do
+    if ReadCharNonBlocking(c) then
+    begin                       
+      FSequenceAutomaton.Step(c);
+      Result[i] := c;
+    end
+    else
+    begin
+      // Assumption 2: The whole sequence will be buffered at once
+      SetLength(result, i-1);
+      Break;
+    end;
+  aut := FSequenceAutomaton.LongestMatch;
+  sequenceLength := 1;
+  if Assigned(aut) then
+    sequenceLength:=aut.Final;
+  // Everything that is not part of the sequence goes back to the buffer to be read later
+  FBuffer += Result.Substring(sequenceLength);
+  // Finally we trim the result to only contain the sequence
+  SetLength(Result, sequenceLength);
 end;
 
 function TTerminalInputStream.ReadToEnd: String;
@@ -250,6 +319,11 @@ begin
   Result := ReadTo(APattern, SizeInt.MaxValue);
 end;
 
+function TTerminalInputStream.ReadKey: TTerminalKey;
+begin
+  Result := KeyFromSequence(ReadSequence);
+end;
+
 function TTerminalInputStream.ReadLn: String;
 var
   LineEnding: String = system.LineEnding;
@@ -266,6 +340,8 @@ begin
   inherited Create(AHandle);
   FClosed := False;
   FDirectRead := False;
+  FSequenceAutomaton := TAutomatonManager.Create;
+  CreateKeyAutomatons(FSequenceAutomaton);
   if IsATTY then
     FOrigState := InitInputConsole(Handle);
 end;
@@ -321,6 +397,18 @@ begin
     Write(AString);
   finally
     FModifiers := tmp;
+  end;
+end;
+
+procedure TTerminalOutputStream.WriteRaw(const AString: String);
+var
+  tmp: String;
+begin
+  tmp := FControlBuffer;
+  try
+    WriteNonModified(AString);
+  finally
+    FControlBuffer := tmp;
   end;
 end;
 
@@ -399,6 +487,11 @@ begin
   CursorMove(0, -9999);
   // to then move down the right amount
   CursorMove(0, Y, Flush);
+end;
+
+procedure TTerminalOutputStream.Bell;
+begin
+  WriteRaw(#7);
 end;
 
 procedure TTerminalOutputStream.FlushControls;

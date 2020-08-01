@@ -29,6 +29,8 @@ procedure ResetConsole(Handle: THANDLE; OrigState: Cardinal);
 function EnableDirectRead(Handle: THandle): TDirectReadState;
 procedure RestoreDirectRead(Handle: THandle; oldState: TDirectReadState);
 
+function CharAvailable(Handle: THandle): Boolean;
+
 implementation
 
 procedure GetWindowSize(Handle: THandle; out Rows: Integer; out
@@ -168,6 +170,25 @@ begin
   TCSetAttr(Handle, TCSANOW, oldState);
 end;
 {$EndIf}
+
+
+function CharAvailable(Handle: THandle): Boolean;
+{$IfDef WINDOWS}
+begin
+end;
+{$Else}
+var
+  fdSet: TFDSet;
+  timeout: TTimeVal;
+begin
+  fpFD_ZERO(fdSet);
+  fpFD_SET(Handle, fdSet);
+  timeout.tv_sec:=0;
+  timeout.tv_usec:=0;
+  Result := fpSelect(Handle + 1, @fdSet, nil, nil, @timeout) = 1;
+end;
+{$EndIf}
+
 
 end.
 

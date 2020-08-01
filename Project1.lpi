@@ -25,7 +25,7 @@
       <FormatVersion Value="2"/>
       <Modes Count="0"/>
     </RunParams>
-    <Units Count="6">
+    <Units Count="8">
       <Unit0>
         <Filename Value="Project1.pas"/>
         <IsPartOfProject Value="True"/>
@@ -55,6 +55,16 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="Compatibility"/>
       </Unit5>
+      <Unit6>
+        <Filename Value="src/automaton.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Automaton"/>
+      </Unit6>
+      <Unit7>
+        <Filename Value="src/terminalkeys.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="TerminalKeys"/>
+      </Unit7>
     </Units>
   </ProjectOptions>
   <CompilerOptions>

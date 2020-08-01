@@ -5,7 +5,7 @@ unit Terminal;
 interface
 
 uses
-  Classes, SysUtils, TerminalModifier, TerminalStreams, Compatibility;
+  Classes, SysUtils, TerminalStreams, Compatibility;
 
 type
   { TTerminal }

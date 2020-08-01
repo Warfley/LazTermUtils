@@ -3,17 +3,18 @@ program Project1;
 {$mode objfpc}{$H+}
 
 uses
-  heaptrc, TerminalModifier, Terminal;
+  heaptrc, TerminalModifier, Terminal, TerminalKeys;
 
 var
   Term: TTerminal;
-  s: String;
+  s: char;
+  k: TTerminalKey;
 begin
   Term := TTerminal.Create;
-  WriteLn(Term.Input.IsATTY);
   Term.Output.WriteColored('Foo', $ff0000);
-  Term.Output.ModifyOutput(SingleUnderline);
-  Term.Output.Write('Bar');
+  Term.Output.WriteLn;
+  Term.Output.WriteLn('foo');
+  Term.Output.WriteLn('bar');
   Term.Free;
   ReadLn;
 end.
