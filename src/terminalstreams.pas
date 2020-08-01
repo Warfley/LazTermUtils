@@ -86,7 +86,7 @@ type
     function Read(var Buffer; Count: Longint): Longint; override;
     function Read(Count: SizeInt): String; inline;       
     function ReadChar: Char; inline;
-    function ReadCharNonBlocking(out c: Char): Boolean; inline;
+    function ReadCharNonBlocking(out c: Char): Boolean;
     function ReadToEnd: String;
     function ReadLn: String; inline;
     function ReadTo(const APattern: String; MaxLength: SizeInt; out
@@ -348,6 +348,7 @@ end;
 
 destructor TTerminalInputStream.Destroy;
 begin
+  FSequenceAutomaton.Free;
   if isOpen then ResetTerminal;
   inherited Destroy;
 end;
@@ -533,6 +534,13 @@ end;
 procedure TTerminalOutputStream.WriteLn(const AString: String);
 begin
   Write(AString);
+  {$IFDEF UNIX}
+  // A hack, because if we set the input to the same tty is set to raw it requires crlf
+  // We don't know if this is the same terminal or if it is set to raw
+  // so we always add cr, it doesn't break anything (hopefully)
+  if IsATTY then
+    CursorStartOfLine;
+  {$ENDIF}
   Write(LineEnding);
 end;
 

@@ -7,14 +7,14 @@ uses
 
 var
   Term: TTerminal;
-  s: char;
   k: TTerminalKey;
 begin
   Term := TTerminal.Create;
   Term.Output.WriteColored('Foo', $ff0000);
   Term.Output.WriteLn;
-  Term.Output.WriteLn('foo');
-  Term.Output.WriteLn('bar');
+  Term.Input.DirectRead:=True;
+  k := Term.Input.ReadKey;
+  Writeln(k.SpecialKeyCode);
   Term.Free;
   ReadLn;
 end.

@@ -144,7 +144,7 @@ function EnableDirectRead(Handle: THandle): TDirectReadState;
 {$IfDef WINDOWS}
 begin
   GetConsoleMode(Handle, Result);
-  SetConsoleMode(Handle, Result And Not (ENABLE_ECHO_INPUT Or ENABLE_LINE_INPUT));
+  SetConsoleMode(Handle, Result And Not (ENABLE_ECHO_INPUT Or ENABLE_LINE_INPUT or ENABLE_PROCESSED_INPUT));
 end;
 {$Else}
 var
@@ -174,7 +174,20 @@ end;
 
 function CharAvailable(Handle: THandle): Boolean;
 {$IfDef WINDOWS}
+var
+  Num, read: Cardinal;
+  inps: array of TINPUTRECORD;
+  i: Integer;
 begin
+ Result := False;
+ if not GetNumberOfConsoleInputEvents(Handle, num) then
+   Exit(True);
+ if Num = 0 then Exit;
+ SetLength(inps, num);
+ PeekConsoleInput(Handle, @inps[0], num, @read);
+ for i := 0 to read - 1 do
+   if inps[i].EventType = KEY_EVENT then
+     Exit(True)
 end;
 {$Else}
 var
