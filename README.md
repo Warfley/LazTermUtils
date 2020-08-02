@@ -12,6 +12,7 @@ The functionality include:
 - Modifying output (bold, italic, underlined, etc.)
 - Reading input keys and modifiers
 - Managing terminal window (getting size, jumping around, clearing)
+- Non blocking reading of chars and keys
 
 ## Requirements
 This library uses xTerm compatible ANSI escape sequences.
@@ -24,3 +25,4 @@ See the `example` directory for some examples.
 - `example/ReadkeyExample` shows how to read Keystrokes and process them
 - `example/Colortest` colors the whole display (each cell individually) while measuring the FPS to brenchmark the performance of redrawing every cell
 - `example/Textmods` prints text with different modifications. Which of them get displayed correctly depends on your Terminal emulator.
+- `example/NonBlockingReadTest` shows how to use non blocking read to update your view and check for keystrokes single threaded
