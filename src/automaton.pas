@@ -15,6 +15,7 @@ type
   private
     FCount: SizeInt;
     FFinal: SizeInt;
+    FID: IntPtr;
   protected
     procedure DoReset; virtual; abstract;
     procedure DoStep(c: char); virtual; abstract;
@@ -25,11 +26,12 @@ type
     procedure Step(c: char); inline;
     procedure Reset; inline;
 
-    constructor Create;
+    constructor Create(AID: IntPtr);
 
     property Sink: boolean read IsSink;
     property Count: SizeInt read FCount;
     property Final: SizeInt read FFinal;
+    property ID: IntPtr read FID;
   end;
 
   TAutomatons = specialize TFPGObjectList<TAutomaton>;
@@ -48,7 +50,34 @@ type
     procedure DoStep(c: char); override;
     function isSink: boolean; override;
   public
-    constructor Create(const ASequence: string; const Letters: TCharSet);
+    constructor Create(const ASequence: string; const Letters: TCharSet; AID: IntPtr);
+  end;
+
+  { TUTF8CharAutomaton }
+
+  TUTF8CharAutomaton = class(TAutomaton)
+  private
+    FExpectedLength: integer;
+    FSink: boolean;
+  protected
+    procedure DoReset; override;
+    procedure DoStep(c: char); override;
+    function isSink: boolean; override;
+  end;
+
+  { TPrefixAutomaton }
+
+  TPrefixAutomaton = class(TAutomaton)
+  private
+    FSink: boolean;
+    FPrefix: string;
+    FFollowupAutomaton: TAutomaton;
+  protected
+    procedure DoReset; override;
+    procedure DoStep(c: char); override;
+    function isSink: boolean; override;
+  public
+    constructor Create(const APrefix: string; const FollowUp: TAutomaton; AID: IntPtr);
   end;
 
   { TEnclosedSequenceAutomaton }
@@ -63,7 +92,7 @@ type
     procedure DoStep(c: char); override;
     function isSink: boolean; override;
   public
-    constructor Create(const AStart: string; AEnd: TCharSet);
+    constructor Create(const AStart: string; AEnd: TCharSet; AID: IntPtr);
   end;
 
   { TAutomatonManager }
@@ -74,7 +103,7 @@ type
   public
     procedure AddAutomaton(AAutomaton: TAutomaton); inline;
     procedure Reset; inline;
-    procedure Step(c: Char); inline;
+    procedure Step(c: char); inline;
     function LongestMatch: TAutomaton; inline;
 
     constructor Create;
@@ -82,6 +111,43 @@ type
   end;
 
 implementation
+
+{ TPrefixAutomaton }
+
+procedure TPrefixAutomaton.DoReset;
+begin
+  FFollowupAutomaton.Reset;
+  FSink := False;
+end;
+
+procedure TPrefixAutomaton.DoStep(c: char);
+begin
+  if FSink then Exit;
+  if Count <= FPrefix.Length then
+  begin
+    if FPrefix[Count] <> c then
+      FSink := True;
+  end
+  else
+  begin
+    FFollowupAutomaton.Step(c);
+    if FFollowupAutomaton.Final = Count - FPrefix.Length then
+      MakeFinal;
+  end;
+end;
+
+function TPrefixAutomaton.isSink: boolean;
+begin
+  Result := FSink Or FFollowupAutomaton.Sink;
+end;
+
+constructor TPrefixAutomaton.Create(const APrefix: string;
+  const FollowUp: TAutomaton; AID: IntPtr);
+begin
+  FPrefix:=APrefix;
+  FFollowupAutomaton := FollowUp;
+  inherited Create(AID);
+end;
 
 { TAutomatonManager }
 
@@ -99,7 +165,7 @@ begin
     aut.Reset;
 end;
 
-procedure TAutomatonManager.Step(c: Char);  
+procedure TAutomatonManager.Step(c: char);
 var
   aut: TAutomaton;
 begin
@@ -109,7 +175,7 @@ end;
 
 function TAutomatonManager.LongestMatch: TAutomaton;
 var
-  m: SizeInt = -1; 
+  m: SizeInt = -1;
   aut: TAutomaton;
 begin
   Result := nil;
@@ -152,9 +218,10 @@ begin
   DoReset;
 end;
 
-constructor TAutomaton.Create;
+constructor TAutomaton.Create(AID: IntPtr);
 begin
   Reset;
+  FID := AID;
 end;
 
 { TSingleLetterSequenceAutomaton }
@@ -184,11 +251,11 @@ begin
 end;
 
 constructor TSingleLetterSequenceAutomaton.Create(const ASequence: string;
-  const Letters: TCharSet);
+  const Letters: TCharSet; AID: IntPtr);
 begin
   FInitialSequence := ASequence;
   FMatchingLetters := Letters;
-  inherited Create;
+  inherited Create(AID);
 end;
 
 { TEnclosedSequenceAutomaton }
@@ -216,11 +283,48 @@ begin
   Result := FSink;
 end;
 
-constructor TEnclosedSequenceAutomaton.Create(const AStart: string; AEnd: TCharSet);
+constructor TEnclosedSequenceAutomaton.Create(const AStart: string;
+  AEnd: TCharSet; AID: IntPtr);
 begin
+  Inherited Create(AID);
   FStartSequence := AStart;
   FEndChars := AEnd;
 end;
 
-end.
+{ TUTF8CharAutomaton }
 
+procedure TUTF8CharAutomaton.DoReset;
+begin
+  FExpectedLength := 0;
+  FSink := False;
+end;
+
+procedure TUTF8CharAutomaton.DoStep(c: char);
+begin
+  if FSink then
+    Exit;
+  if Count = 1 then
+  begin
+    if Ord(c) and 128 = 0 then
+      MakeFinal
+    else if Ord(c) and $E0 = $C0 then
+      FExpectedLength := 2
+    else if Ord(c) and $F0 = $E0 then
+      FExpectedLength := 3
+    else if Ord(c) and $F8 = $F0 then
+      FExpectedLength := 4
+    else
+      FSink := True;
+  end
+  else if (Count > FExpectedLength) or (ord(c) and $C0 <> 128) then
+    FSink := True
+  else if Count = FExpectedLength then
+    MakeFinal;
+end;
+
+function TUTF8CharAutomaton.isSink: boolean;
+begin
+  Result := FSink;
+end;
+
+end.

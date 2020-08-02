@@ -81,7 +81,7 @@ type
     procedure SetDirectRead(AValue: Boolean); inline;
     procedure ResetTerminal; inline;
   public            
-    function ReadSequence: String;
+    function ReadSequence: TSequenceInfo;
     function IsATTY: Boolean; inline;
 
     procedure Close; inline;
@@ -188,39 +188,45 @@ begin
     c := ReadChar;
 end;
 
-function TTerminalInputStream.ReadSequence: String;
+function TTerminalInputStream.ReadSequence: TSequenceInfo;
 var
   i: Integer;
   c: Char;
   aut: TAutomaton;
-  sequenceLength: Integer;
+  seq: String;
 begin
-  SetLength(Result, 10);
+  SetLength(seq, 10);
   FSequenceAutomaton.Reset;
   // First read blocking
-  Result[1] := ReadChar;
-  FSequenceAutomaton.Step(Result[1]);
+  seq[1] := ReadChar;
+  FSequenceAutomaton.Step(seq[1]);
   // Assumption 1: Escape sequences are never longer than 10 chars
   for i:=2 to 10 do
     if ReadCharNonBlocking(c) then
     begin                       
       FSequenceAutomaton.Step(c);
-      Result[i] := c;
+      seq[i] := c;
     end
     else
     begin
       // Assumption 2: The whole sequence will be buffered at once
-      SetLength(result, i-1);
+      SetLength(seq, i-1);
       Break;
     end;
   aut := FSequenceAutomaton.LongestMatch;
-  sequenceLength := 1;
+
   if Assigned(aut) then
-    sequenceLength:=aut.Final;
+  begin
+    Result.SequenceType := TSequenceType(aut.ID);
+    Result.Sequence := seq.Substring(0, aut.Final);
+  end
+  else
+  begin
+    Result.Sequence := seq.Substring(0, 1);
+    Result.SequenceType := stUnknown;
+  end;
   // Everything that is not part of the sequence goes back to the buffer to be read later
-  FBuffer += Result.Substring(sequenceLength);
-  // Finally we trim the result to only contain the sequence
-  SetLength(Result, sequenceLength);
+  FBuffer += seq.Substring(Result.Sequence.Length);
 end;
 
 function TTerminalInputStream.ReadToEnd: String;
