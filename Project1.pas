@@ -14,17 +14,16 @@ begin
   Term.Output.WriteColored('Foo', $ff0000);
   Term.Output.WriteLn;
   Term.Input.DirectRead:=True;
-  while True do
-  begin
+  repeat
     k := Term.Input.ReadKey;
     if k.SpecialKey then
-      WriteLn(k.SpecialKeyCode)
+      WriteLn(k.SpecialKeyCode, #13)
     else
-      WriteLn(k.CharValue);
+      WriteLn(k.CharValue, #13);
     for m in k.Modifiers do
       Write(m, ' ');
-    WriteLn;
-  end;
+    WriteLn(#13);
+  until (k.CharValue = 'c') and (kmCtrl in k.Modifiers);
   Term.Free;
   ReadLn;
 end.

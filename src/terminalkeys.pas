@@ -76,7 +76,7 @@ begin
   case c of
     #0:
       Result := ControlKey(#32); // space or ctrl + 2
-    #1..#7:
+    #1..#8:
       Result := ControlKey(chr(Ord(c) - 1 + Ord('a')));
     #9:
       Result := CharKey(#9); // same as ctrl + I

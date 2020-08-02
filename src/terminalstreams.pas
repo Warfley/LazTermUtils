@@ -24,6 +24,8 @@ type
     FModifiers: TModifiers;
     FOrigState: Cardinal;
     FClosed: Boolean;
+    FBufferSize: SizeInt;
+    FBuffer: String;
 
     procedure ResetTerminal; inline;
     procedure WriteNonModified(const AString: String); inline;
@@ -48,6 +50,7 @@ type
     procedure Bell; inline;
 
     procedure FlushControls; inline;
+    procedure FlushBuffer; inline;
 
     function Read(var Buffer; Count: Longint): Longint; override;
     function Write(const Buffer; Count: Longint): Longint; override;
@@ -60,6 +63,8 @@ type
 
     constructor Create(AHandle: THandle);
     destructor Destroy; override;
+
+    property BufferSize: SizeInt read FBufferSize write FBufferSize;
   end;
 
   { TTerminalInputStream }
@@ -394,6 +399,7 @@ var
   tmp: TModifiers;
 begin
   tmp := FModifiers;
+  FModifiers := [];
   try
     Write(AString);
   finally
@@ -406,6 +412,7 @@ var
   tmp: String;
 begin
   tmp := FControlBuffer;
+  FControlBuffer := '';
   try
     WriteNonModified(AString);
   finally
@@ -468,7 +475,7 @@ end;
 procedure TTerminalOutputStream.CursorGoto(X: Integer; Y: Integer;
   Flush: Boolean);
 begin
-  FControlBuffer += #27'[' + X.ToString + ';' + Y.ToString + 'H';
+  FControlBuffer += #27'[' + (Y+1).ToString + ';' + (X+1).ToString + 'H';
   if Flush then FlushControls;
 end;
 
@@ -500,6 +507,20 @@ begin
   WriteNonModified('');
 end;
 
+procedure TTerminalOutputStream.FlushBuffer;
+var
+  tmp: SizeInt;
+begin
+  tmp := FBufferSize;
+  FBufferSize := 0;
+  try
+    WriteRaw(FBuffer);
+    FBuffer := '';
+  finally
+    FBufferSize := tmp;
+  end;
+end;
+
 function TTerminalOutputStream.Read(var Buffer; Count: Longint): Longint;
 begin
   raise EReadError.Create('Can''t read from output');   
@@ -508,6 +529,7 @@ end;
 
 function TTerminalOutputStream.Write(const Buffer; Count: Longint): Longint;
 var modStr: String;
+  tmp: SizeInt;
 begin
   if not isOpen then
     raise EWriteError.Create('File already closed');
@@ -522,6 +544,18 @@ begin
     modStr:=ConstructEscapeSequence(FModifiers);
     FModifiers := [];
     WriteBuffer(modStr[1], modStr.Length);
+  end;
+  if FBufferSize > 0 then
+  begin
+    tmp := FBuffer.Length;
+    SetLength(FBuffer, tmp + Count);
+    Move(Buffer, FBuffer[tmp + 1], Count);
+    if FBuffer.Length > FBufferSize then
+    begin
+      inherited Write(FBuffer[1], FBuffer.Length);
+      FBuffer := '';
+    end;
+    Exit(Count);
   end;
   Result:=inherited Write(Buffer, Count);
 end;
@@ -575,6 +609,7 @@ end;
 constructor TTerminalOutputStream.Create(AHandle: THandle);
 begin
   inherited Create(AHandle);
+  FBufferSize := 0;
   FClosed := False;
   if IsATTY then
     FOrigState := InitOutputConsole(Handle);
@@ -582,7 +617,12 @@ end;
 
 destructor TTerminalOutputStream.Destroy;
 begin
-  if isOpen then ResetTerminal;
+  if isOpen then
+  begin
+    FlushBuffer;
+    FlushControls;
+    ResetTerminal;
+  end;
   inherited Destroy;
 end;
 
