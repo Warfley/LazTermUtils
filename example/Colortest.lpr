@@ -57,6 +57,7 @@ begin
   try
     start := GetTickCount64;
     v := 0;
+    Term.Output.HideCursor;
     Term.Output.Clear;
     Frames := 0;
     // printing will only occur on flushbuffer because writing SizeInt.Maxvalue

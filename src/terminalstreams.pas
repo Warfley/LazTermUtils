@@ -48,6 +48,8 @@ type
     procedure CursorGotoX(X: Integer; Flush: Boolean = False); inline;
     procedure CursorGotoY(Y: Integer; Flush: Boolean = False); inline;
     procedure Bell; inline;
+    procedure HideCursor; inline;
+    procedure ShowCursor; inline;
 
     procedure FlushControls; inline;
     procedure FlushBuffer; inline;
@@ -80,8 +82,8 @@ type
 
     procedure SetDirectRead(AValue: Boolean); inline;
     procedure ResetTerminal; inline;
-  public            
-    function ReadSequence: TSequenceInfo;
+    function ReadSequence(NonBlocking: Boolean): TSequenceInfo;
+  public
     function IsATTY: Boolean; inline;
 
     procedure Close; inline;
@@ -99,6 +101,7 @@ type
     function ReadTo(const APattern: String; MaxLength: SizeInt): String; inline;
     function ReadTo(const APattern: String): String; inline;
     function ReadKey: TTerminalKey; inline;
+    function ReadKeyNonBlocking(out AKey: TTerminalKey): Boolean; inline;
 
     constructor Create(AHandle: THandle);
     destructor Destroy; override;
@@ -173,7 +176,8 @@ end;
 
 function TTerminalInputStream.Read(Count: SizeInt): String;
 begin
-  ReadBuffer(Result, Count);
+  SetLength(Result, Count);
+  ReadBuffer(Result[1], Count);
 end;
 
 function TTerminalInputStream.ReadChar: Char;
@@ -188,7 +192,7 @@ begin
     c := ReadChar;
 end;
 
-function TTerminalInputStream.ReadSequence: TSequenceInfo;
+function TTerminalInputStream.ReadSequence(NonBlocking: Boolean): TSequenceInfo;
 var
   i: Integer;
   c: Char;
@@ -197,8 +201,18 @@ var
 begin
   SetLength(seq, 10);
   FSequenceAutomaton.Reset;
-  // First read blocking
-  seq[1] := ReadChar;
+  if NonBlocking then
+  begin
+    if not ReadCharNonBlocking(c) then
+    begin
+      Result.Sequence:='';
+      Result.SequenceType := stUnknown;
+      Exit;
+    end;
+  end
+  else
+    c := ReadChar;
+  seq[1] := c;
   FSequenceAutomaton.Step(seq[1]);
   // Assumption 1: Escape sequences are never longer than 10 chars
   for i:=2 to 10 do
@@ -332,7 +346,18 @@ end;
 
 function TTerminalInputStream.ReadKey: TTerminalKey;
 begin
-  Result := KeyFromSequence(ReadSequence);
+  Result := KeyFromSequence(ReadSequence(False));
+end;
+
+function TTerminalInputStream.ReadKeyNonBlocking(out AKey: TTerminalKey
+  ): Boolean;
+var
+  seq: TSequenceInfo;
+begin
+  seq := ReadSequence(True);
+  Result := (seq.Sequence.Length > 0) and (seq.SequenceType <> stUnknown);
+  if Result then
+    AKey := KeyFromSequence(seq);
 end;
 
 function TTerminalInputStream.ReadLn: String;
@@ -394,7 +419,8 @@ begin
   begin
     {$IfDef WINDOWS}
     ConsoleClosed := True;
-    {$EndIf}
+    {$EndIf}  
+    ShowCursor;
     Write(RESET_SEQUENCE);
     ResetConsole(Handle, FOrigState);
   end;
@@ -506,6 +532,16 @@ end;
 procedure TTerminalOutputStream.Bell;
 begin
   WriteRaw(#7);
+end;
+
+procedure TTerminalOutputStream.HideCursor;
+begin
+  WriteRaw(#27'[?25l');
+end;
+
+procedure TTerminalOutputStream.ShowCursor;
+begin
+  WriteRaw(#27'[?25h');
 end;
 
 procedure TTerminalOutputStream.FlushControls;
