@@ -26,3 +26,12 @@ See the `example` directory for some examples.
 - `example/Colortest` colors the whole display (each cell individually) while measuring the FPS to brenchmark the performance of redrawing every cell
 - `example/Textmods` prints text with different modifications. Which of them get displayed correctly depends on your Terminal emulator.
 - `example/NonBlockingReadTest` shows how to use non blocking read to update your view and check for keystrokes single threaded
+
+## Unicode on Windows
+To use unicode (UTF-8) strings on Windows, you need to set the console code page:
+```
+  SetConsoleOutputCP(DefaultSystemCodePage);
+  SetTextCodePage(Output, DefaultSystemCodePage);
+  SetTextCodePage(ErrOutput, DefaultSystemCodePage);
+```
+Further information can be found here: https://wiki.freepascal.org/Lazarus_with_FPC3.0_without_UTF-8_mode#Problem_System_encoding_and_Console_encoding_.28Windows.29
