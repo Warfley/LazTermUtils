@@ -186,7 +186,7 @@ begin
  SetLength(inps, num);
  PeekConsoleInput(Handle, @inps[0], num, @read);
  for i := 0 to read - 1 do
-   if inps[i].EventType = KEY_EVENT then
+   if (inps[i].EventType = KEY_EVENT) and (inps[i].Event.KeyEvent.bKeyDown) then
      Exit(True)
 end;
 {$Else}
