@@ -78,6 +78,7 @@ type
     function isSink: boolean; override;
   public
     constructor Create(const APrefix: string; const FollowUp: TAutomaton; AID: IntPtr);
+    destructor Destroy; override;
   end;
 
   { TEnclosedSequenceAutomaton }
@@ -147,6 +148,12 @@ begin
   FPrefix:=APrefix;
   FFollowupAutomaton := FollowUp;
   inherited Create(AID);
+end;
+
+destructor TPrefixAutomaton.Destroy;
+begin
+  FFollowupAutomaton.Free;
+  inherited Destroy;
 end;
 
 { TAutomatonManager }
